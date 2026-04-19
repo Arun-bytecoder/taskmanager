@@ -1,15 +1,33 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 from db.database import Base, engine
-import models  # noqa: F401 – registers all models before create_all
+import models  # noqa: F401
 from routers import auth, tasks
 
-# Create all tables on startup
-Base.metadata.create_all(bind=engine)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Starting up TaskFlow API...")
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created/verified OK")
+    except Exception as e:
+        logger.error(f"Database init failed: {e}")
+        raise
+    yield
+    # Shutdown
+    logger.info("Shutting down TaskFlow API...")
+
 
 app = FastAPI(
     title="TaskFlow – Task Manager API",
@@ -23,10 +41,9 @@ app = FastAPI(
         "Full CRUD with pagination and completion filtering."
     ),
     version="1.0.0",
-    contact={"name": "TaskFlow"},
+    lifespan=lifespan,
 )
 
-# Allow all origins – frontend may be served from a different port (Live Server etc.)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -38,8 +55,9 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(tasks.router)
 
-# Serve the frontend from FastAPI so http://localhost:8000 shows the UI
+# Serve frontend static files
 _frontend = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
+logger.info(f"Frontend path: {_frontend} | exists: {os.path.isdir(_frontend)}")
 
 if os.path.isdir(_frontend):
     @app.get("/", include_in_schema=False)
@@ -47,6 +65,10 @@ if os.path.isdir(_frontend):
         return FileResponse(os.path.join(_frontend, "index.html"))
 
     app.mount("/app", StaticFiles(directory=_frontend, html=True), name="frontend")
+else:
+    @app.get("/", include_in_schema=False)
+    def root():
+        return {"message": "TaskFlow API is running. Visit /docs for API documentation."}
 
 
 @app.get("/health", tags=["Health"], summary="Health check")
