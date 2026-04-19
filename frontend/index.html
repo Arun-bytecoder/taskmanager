@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TaskFlow – Task Manager</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f4f6f8; --surface: #ffffff; --surface2: #eef0f3;
+      --border: #dde1e7; --border2: #c5cbd6;
+      --accent: #2d6a4f; --accent-light: #e8f5ee; --accent-dark: #1b4332;
+      --text: #1a202c; --text2: #4a5568; --text3: #a0aec0;
+      --success: #276749; --success-bg: #e8f5ee; --success-border: #9bcfb0;
+      --danger: #c53030; --danger-bg: #fff5f5; --danger-border: #feb2b2;
+      --radius: 10px; --radius-lg: 14px;
+      --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+      --shadow-md: 0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.05);
+    }
+    body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 15px; }
+
+    /* Toast */
+    #toast-container { position: fixed; top: 1.25rem; right: 1.25rem; z-index: 9999; display: flex; flex-direction: column; gap: .5rem; pointer-events: none; }
+    .toast { display: flex; align-items: flex-start; gap: .75rem; padding: .9rem 1.1rem; border-radius: var(--radius); font-size: .9rem; font-weight: 500; max-width: 340px; min-width: 260px; box-shadow: 0 8px 24px rgba(0,0,0,.14), 0 2px 6px rgba(0,0,0,.08); pointer-events: auto; animation: slideIn .3s cubic-bezier(.22,.68,0,1.2) forwards; border: 1px solid; cursor: pointer; }
+    .toast.removing { animation: slideOut .2s ease forwards; }
+    .toast-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 1px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+    .toast.success .toast-icon { background: var(--success); color: #fff; font-size: .8rem; font-weight: 700; }
+    .toast.error .toast-icon { background: var(--danger); color: #fff; font-size: .8rem; font-weight: 700; }
+    .toast.info .toast-icon { background: var(--accent); color: #fff; font-size: .8rem; font-weight: 700; }
+    .toast-title { font-weight: 700; line-height: 1.3; font-size: .92rem; }
+    .toast-msg { font-weight: 400; opacity: .8; font-size: .82rem; margin-top: 2px; }
+    .toast.success { background: var(--success-bg); color: var(--success); border-color: var(--success-border); }
+    .toast.error   { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-border); }
+    .toast.info    { background: var(--accent-light); color: var(--accent); border-color: #9bcfb0; }
+    @keyframes slideIn { from { opacity: 0; transform: translateX(24px) scale(.97); } to { opacity: 1; transform: none; } }
+    @keyframes slideOut { to { opacity: 0; transform: translateX(24px) scale(.97); } }
+    .toast-progress { position: absolute; bottom: 0; left: 0; height: 3px; border-radius: 0 0 var(--radius) var(--radius); animation: progress var(--dur, 5s) linear forwards; }
+    .toast { position: relative; overflow: hidden; }
+    .toast.success .toast-progress { background: var(--success); }
+    .toast.error .toast-progress   { background: var(--danger); }
+    .toast.info .toast-progress    { background: var(--accent); }
+    @keyframes progress { from { width: 100%; } to { width: 0%; } }
+
+    /* Header */
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 2rem; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: var(--shadow); }
+    .logo { display: flex; align-items: center; gap: .5rem; font-weight: 600; font-size: 1rem; letter-spacing: -.02em; color: var(--text); }
+    .logo-dot { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; }
+    #user-info { display: none; align-items: center; gap: .75rem; }
+    .user-chip { display: flex; align-items: center; gap: .45rem; font-size: .85rem; color: var(--text2); background: var(--surface2); border: 1px solid var(--border); padding: .3rem .75rem; border-radius: 99px; }
+    .user-avatar { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: .65rem; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+    #logout-btn { font-size: .82rem; font-weight: 500; color: var(--text3); background: none; border: 1px solid var(--border); padding: .3rem .75rem; border-radius: 99px; cursor: pointer; transition: all .15s; font-family: inherit; }
+    #logout-btn:hover { border-color: var(--border2); color: var(--text2); background: var(--surface2); }
+
+    /* Pages */
+    .page { display: none; }
+    .page.active { display: block; }
+    #auth-page { min-height: calc(100vh - 56px); display: none; align-items: center; justify-content: center; padding: 2rem 1rem; }
+    #auth-page.active { display: flex; }
+
+    /* Auth */
+    .auth-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 2rem 2.25rem; width: 100%; max-width: 400px; box-shadow: var(--shadow-md); }
+    .auth-header { margin-bottom: 1.75rem; }
+    .auth-header h2 { font-size: 1.25rem; font-weight: 600; letter-spacing: -.02em; margin-bottom: .3rem; }
+    .auth-header p { font-size: .875rem; color: var(--text2); }
+    .form-group { margin-bottom: 1rem; }
+    label { display: block; font-size: .8rem; font-weight: 500; color: var(--text2); margin-bottom: .35rem; letter-spacing: .01em; }
+    input[type="text"], input[type="email"], input[type="password"] { width: 100%; padding: .6rem .85rem; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: .9rem; font-family: inherit; outline: none; transition: border-color .15s, box-shadow .15s; }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(45,106,79,.14); background: var(--surface); }
+    input::placeholder { color: var(--text3); }
+    .btn-primary { display: flex; align-items: center; justify-content: center; gap: .4rem; width: 100%; padding: .7rem; background: var(--accent); color: #fff; border: none; border-radius: var(--radius); cursor: pointer; font-size: .875rem; font-weight: 600; font-family: inherit; transition: background .15s; margin-top: .25rem; }
+    .btn-primary:hover { background: var(--accent-dark); }
+    .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
+    .divider { display: flex; align-items: center; gap: .75rem; margin: 1.25rem 0; font-size: .75rem; color: var(--text3); }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .auth-switch { text-align: center; font-size: .85rem; color: var(--text2); }
+    .auth-switch a { color: var(--accent); cursor: pointer; font-weight: 500; }
+    .auth-switch a:hover { text-decoration: underline; }
+    .field-error { font-size: .78rem; color: var(--danger); margin-top: .3rem; display: none; }
+    .field-error.show { display: block; }
+    .general-error { font-size: .85rem; color: var(--danger); background: var(--danger-bg); border: 1px solid var(--danger-border); border-radius: var(--radius); padding: .6rem .85rem; margin-bottom: .75rem; display: none; }
+    .general-error.show { display: block; }
+
+    /* Tasks page */
+    #tasks-page { max-width: 760px; margin: 0 auto; padding: 2rem 1.5rem; }
+    .page-header { display: flex; align-items: center; gap: .75rem; margin-bottom: 1.75rem; }
+    .page-header h2 { font-size: 1.15rem; font-weight: 600; letter-spacing: -.02em; }
+    .task-count-badge { font-size: .75rem; font-weight: 600; color: var(--text3); background: var(--surface2); border: 1px solid var(--border); padding: .2rem .6rem; border-radius: 99px; }
+
+    /* Create panel */
+    .create-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; box-shadow: var(--shadow); }
+    .create-panel-label { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--text3); margin-bottom: 1rem; }
+    .create-row { display: flex; gap: .6rem; align-items: flex-end; }
+    .create-row input { flex: 1; }
+    #task-desc { margin-top: .5rem; }
+    .btn-add { background: var(--accent); color: #fff; border: none; padding: .6rem 1.1rem; border-radius: var(--radius); cursor: pointer; font-size: .875rem; font-weight: 600; font-family: inherit; white-space: nowrap; transition: background .15s; flex-shrink: 0; }
+    .btn-add:hover { background: var(--accent-dark); }
+    .btn-add:disabled { opacity: .6; cursor: not-allowed; }
+
+    /* Filters */
+    .filters-bar { display: flex; gap: .4rem; margin-bottom: 1rem; align-items: center; }
+    .filter-btn { font-size: .8rem; font-weight: 500; color: var(--text2); background: var(--surface); border: 1px solid var(--border); padding: .3rem .85rem; border-radius: 99px; cursor: pointer; transition: all .15s; font-family: inherit; }
+    .filter-btn:hover { border-color: var(--border2); }
+    .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .filter-sep { flex: 1; }
+    .refresh-btn { background: none; border: 1px solid var(--border); color: var(--text3); padding: .3rem .7rem; border-radius: var(--radius); cursor: pointer; font-size: .8rem; font-family: inherit; transition: all .15s; }
+    .refresh-btn:hover { border-color: var(--border2); color: var(--text2); }
+
+    /* Task items */
+    #tasks-list { display: flex; flex-direction: column; gap: .5rem; }
+    .task-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem 1.25rem; display: flex; align-items: flex-start; gap: 1rem; transition: border-color .15s, box-shadow .15s; box-shadow: var(--shadow); }
+    .task-item:hover { border-color: var(--border2); box-shadow: var(--shadow-md); }
+    .task-item.completed { opacity: .55; }
+    .task-check { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border2); cursor: pointer; transition: all .15s; display: flex; align-items: center; justify-content: center; background: transparent; flex-shrink: 0; margin-top: 2px; }
+    .task-check:hover:not(.done) { border-color: var(--accent); background: var(--accent-light); }
+    .task-check.done { background: var(--success); border-color: var(--success); cursor: default; }
+    .task-check.done::after { content: ''; display: block; width: 5px; height: 9px; border: 2px solid #fff; border-top: none; border-left: none; transform: rotate(45deg) translate(-1px,-1px); }
+    .task-body { flex: 1; min-width: 0; }
+    .task-title { font-weight: 600; font-size: .925rem; color: var(--text); letter-spacing: -.01em; line-height: 1.4; }
+    .task-item.completed .task-title { text-decoration: line-through; color: var(--text3); }
+    .task-desc { font-size: .82rem; color: var(--text2); margin-top: .2rem; line-height: 1.5; }
+    .task-meta { font-size: .72rem; color: var(--text3); margin-top: .35rem; font-family: 'DM Mono', monospace; }
+    .task-right { display: flex; align-items: center; gap: .4rem; flex-shrink: 0; }
+    .badge { font-size: .7rem; font-weight: 600; padding: .15rem .5rem; border-radius: 99px; letter-spacing: .02em; }
+    .badge-done    { background: var(--success-bg); color: var(--success); border: 1px solid var(--success-border); }
+    .badge-pending { background: var(--accent-light); color: var(--accent); border: 1px solid #9bcfb0; }
+    .btn-icon { background: none; border: 1px solid var(--border); color: var(--text3); padding: .3rem .55rem; border-radius: var(--radius); cursor: pointer; font-size: .78rem; font-family: inherit; font-weight: 500; transition: all .15s; display: flex; align-items: center; gap: .3rem; }
+    .btn-icon:hover { border-color: var(--border2); color: var(--text2); background: var(--surface2); }
+    .btn-icon.danger:hover { border-color: var(--danger-border); color: var(--danger); background: var(--danger-bg); }
+
+    /* Empty */
+    .empty-state { text-align: center; padding: 3.5rem 2rem; color: var(--text3); }
+    .empty-icon { font-size: 2rem; margin-bottom: .75rem; opacity: .35; }
+    .empty-state h4 { font-size: .95rem; font-weight: 600; color: var(--text2); margin-bottom: .35rem; }
+    .empty-state p { font-size: .85rem; }
+
+    /* Pagination */
+    .pagination { display: flex; align-items: center; justify-content: center; gap: .75rem; margin-top: 1.5rem; font-size: .82rem; color: var(--text2); }
+    .pagination button { background: var(--surface); border: 1px solid var(--border); color: var(--text2); padding: .35rem .9rem; border-radius: var(--radius); cursor: pointer; font-family: inherit; font-size: .82rem; transition: all .15s; }
+    .pagination button:hover:not(:disabled) { border-color: var(--border2); background: var(--surface2); }
+    .pagination button:disabled { opacity: .35; cursor: default; }
+
+    /* Spinner */
+    .spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; animation: spin .55s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Skeleton */
+    .skel-item { height: 72px; border-radius: var(--radius-lg); margin-bottom: .5rem; background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; }
+    @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+    @media (max-width: 600px) {
+      header { padding: 0 1rem; }
+      #tasks-page { padding: 1.25rem 1rem; }
+      .auth-card { padding: 1.5rem; }
+      .task-right { flex-direction: column; align-items: flex-end; }
+      .create-row { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="toast-container"></div>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    TaskFlow
+  </div>
+  <div id="user-info">
+    <div class="user-chip">
+      <div class="user-avatar" id="user-avatar"></div>
+      <span id="username-display"></span>
+    </div>
+    <button id="logout-btn" onclick="logout()">Sign out</button>
+  </div>
+</header>
+
+<!-- Auth Page -->
+<div id="auth-page" class="page">
+  <div class="auth-card">
+
+    <!-- Login -->
+    <div id="login-view">
+      <div class="auth-header">
+        <h2>Welcome back</h2>
+        <p>Sign in to your TaskFlow account</p>
+      </div>
+      <div class="form-group">
+        <label for="login-username">Username</label>
+        <input id="login-username" type="text" placeholder="Enter your username" autocomplete="username"/>
+        <div class="field-error" id="err-login-user"></div>
+      </div>
+      <div class="form-group">
+        <label for="login-password">Password</label>
+        <input id="login-password" type="password" placeholder="Enter your password" autocomplete="current-password"/>
+        <div class="field-error" id="err-login-pass"></div>
+      </div>
+      <div class="general-error" id="err-login-general"></div>
+      <button class="btn-primary" id="login-btn" onclick="doLogin()">Sign in</button>
+      <div class="divider">or</div>
+      <div class="auth-switch">No account? <a onclick="showRegister()">Create one free</a></div>
+    </div>
+
+    <!-- Register -->
+    <div id="register-view" style="display:none">
+      <div class="auth-header">
+        <h2>Create account</h2>
+        <p>Start managing your tasks today</p>
+      </div>
+      <div class="form-group">
+        <label for="reg-username">Username</label>
+        <input id="reg-username" type="text" placeholder="Choose a username" autocomplete="username"/>
+        <div class="field-error" id="err-reg-user"></div>
+      </div>
+      <div class="form-group">
+        <label for="reg-email">Email address</label>
+        <input id="reg-email" type="email" placeholder="you@example.com" autocomplete="email"/>
+        <div class="field-error" id="err-reg-email"></div>
+      </div>
+      <div class="form-group">
+        <label for="reg-password">Password</label>
+        <input id="reg-password" type="password" placeholder="At least 8 characters" autocomplete="new-password"/>
+        <div class="field-error" id="err-reg-pass"></div>
+      </div>
+      <div class="general-error" id="err-reg-general"></div>
+      <button class="btn-primary" id="reg-btn" onclick="doRegister()">Create account</button>
+      <div class="divider">or</div>
+      <div class="auth-switch">Already have an account? <a onclick="showLogin()">Sign in</a></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Tasks Page -->
+<div id="tasks-page" class="page">
+  <div class="page-header">
+    <h2>My Tasks</h2>
+    <span class="task-count-badge" id="task-count-badge">—</span>
+  </div>
+
+  <div class="create-panel">
+    <div class="create-panel-label">New task</div>
+    <div class="create-row">
+      <input id="task-title" type="text" placeholder="What needs to be done?"/>
+      <button class="btn-add" id="add-task-btn" onclick="createTask()">Add task</button>
+    </div>
+    <input id="task-desc" type="text" placeholder="Description (optional)"/>
+    <div class="field-error" id="task-error" style="margin-top:.5rem;"></div>
+  </div>
+
+  <div class="filters-bar">
+    <button class="filter-btn active" onclick="setFilter('all',this)">All</button>
+    <button class="filter-btn" onclick="setFilter('false',this)">Pending</button>
+    <button class="filter-btn" onclick="setFilter('true',this)">Completed</button>
+    <div class="filter-sep"></div>
+    <button class="refresh-btn" onclick="loadTasks()">↻ Refresh</button>
+  </div>
+
+  <div id="tasks-list"></div>
+
+  <div class="pagination">
+    <button id="prev-btn" onclick="changePage(-1)" disabled>← Previous</button>
+    <span id="page-info">Page 1 of 1</span>
+    <button id="next-btn" onclick="changePage(1)" disabled>Next →</button>
+  </div>
+</div>
+
+<script>
+  const API = (location.port === '8000' || location.protocol === 'https:') ? '' : 'http://localhost:8000';
+  let token = localStorage.getItem('tm_token') || null;
+  let currentUser = localStorage.getItem('tm_user') || '';
+  let currentPage = 1, currentFilter = 'all';
+  const PAGE_SIZE = 8;
+
+  // Toast
+  function showToast(type, title, msg, ms = 4000) {
+    const icons = { success: '✓', error: '✕', info: 'i' };
+    const c = document.getElementById('toast-container');
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.style.setProperty('--dur', ms + 'ms');
+    t.innerHTML = `
+      <div class="toast-icon">${icons[type]||'•'}</div>
+      <div style="flex:1">
+        <div class="toast-title">${esc(title)}</div>
+        ${msg ? `<div class="toast-msg">${esc(msg)}</div>` : ''}
+      </div>
+      <div style="color:currentColor;opacity:.4;font-size:.8rem;cursor:pointer;align-self:flex-start">✕</div>
+      <div class="toast-progress"></div>`;
+    c.appendChild(t);
+    const remove = () => { t.classList.add('removing'); setTimeout(()=>t.remove(),250); };
+    const tid = setTimeout(remove, ms);
+    t.addEventListener('click', () => { clearTimeout(tid); remove(); });
+  }
+
+  // Boot
+  window.onload = () => token ? gotoTasks() : gotoAuth();
+
+  function gotoAuth() {
+    document.getElementById('auth-page').classList.add('active');
+    document.getElementById('tasks-page').classList.remove('active');
+    document.getElementById('user-info').style.display = 'none';
+  }
+
+  function gotoTasks() {
+    document.getElementById('auth-page').classList.remove('active');
+    document.getElementById('tasks-page').classList.add('active');
+    document.getElementById('user-info').style.display = 'flex';
+    document.getElementById('username-display').textContent = currentUser;
+    document.getElementById('user-avatar').textContent = currentUser.charAt(0).toUpperCase();
+    loadTasks();
+  }
+
+  function showLogin() {
+    document.getElementById('login-view').style.display = 'block';
+    document.getElementById('register-view').style.display = 'none';
+    clearErrors();
+  }
+
+  function showRegister() {
+    document.getElementById('login-view').style.display = 'none';
+    document.getElementById('register-view').style.display = 'block';
+    clearErrors();
+    ['reg-username','reg-email','reg-password'].forEach(id=>document.getElementById(id).value='');
+  }
+
+  function clearErrors() {
+    document.querySelectorAll('.field-error, .general-error').forEach(el=>{
+      el.textContent=''; el.classList.remove('show');
+    });
+  }
+
+  function showErr(id, msg) {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = msg; el.classList.add('show'); }
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function fmtDate(iso) {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+      + ' · ' + d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  }
+
+  // Register
+  async function doRegister() {
+    clearErrors();
+    const username = document.getElementById('reg-username').value.trim();
+    const email    = document.getElementById('reg-email').value.trim();
+    const password = document.getElementById('reg-password').value;
+    const btn      = document.getElementById('reg-btn');
+
+    let ok = true;
+    if (!username) { showErr('err-reg-user','Username is required'); ok=false; }
+    else if (username.length < 3) { showErr('err-reg-user','Username must be at least 3 characters'); ok=false; }
+    else if (!/^[a-zA-Z0-9_]+$/.test(username)) { showErr('err-reg-user','Only letters, numbers, and underscores allowed'); ok=false; }
+    if (!email) { showErr('err-reg-email','Email is required'); ok=false; }
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showErr('err-reg-email','Enter a valid email'); ok=false; }
+    if (!password) { showErr('err-reg-pass','Password is required'); ok=false; }
+    else if (password.length < 8) { showErr('err-reg-pass','Minimum 8 characters'); ok=false; }
+    if (!ok) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Creating account…';
+
+    try {
+      const res  = await fetch(`${API}/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,email,password})});
+      const data = await res.json();
+
+      if (!res.ok) {
+        const msg = data.detail || 'Registration failed.';
+        if (msg.toLowerCase().includes('username')) showErr('err-reg-user', msg);
+        else if (msg.toLowerCase().includes('email')) showErr('err-reg-email', msg);
+        else showErr('err-reg-general', msg);
+        return;
+      }
+
+      showToast('success', 'Account created!', `Welcome, ${username}! You are now signed in.`);
+      await loginRequest(username, password, false);
+    } catch(e) {
+      showErr('err-reg-general','Cannot reach server. Is the backend running?');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Create account';
+    }
+  }
+
+  // Login
+  async function doLogin() {
+    clearErrors();
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value;
+    const btn      = document.getElementById('login-btn');
+
+    let ok = true;
+    if (!username) { showErr('err-login-user','Username is required'); ok=false; }
+    if (!password) { showErr('err-login-pass','Password is required'); ok=false; }
+    if (!ok) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Signing in…';
+
+    try {
+      await loginRequest(username, password);
+    } catch(e) {
+      showErr('err-login-general','Cannot reach server. Is the backend running?');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Sign in';
+    }
+  }
+
+  async function loginRequest(username, password, showLoginToast = true) {
+    const res  = await fetch(`${API}/login`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({username,password})});
+    const data = await res.json();
+    if (!res.ok) {
+      const msg = data.detail || 'Incorrect credentials.';
+      showErr('err-login-general', msg);
+      showToast('error','Sign in failed', msg);
+      return;
+    }
+    token = data.access_token;
+    currentUser = username;
+    localStorage.setItem('tm_token', token);
+    localStorage.setItem('tm_user', username);
+    if (showLoginToast) {
+      showToast('success', `Signed in successfully!`, `Welcome back, ${username}.`);
+    }
+    gotoTasks();
+  }
+
+  // Logout
+  function logout() {
+    const name = currentUser;
+    token = null; currentUser = '';
+    localStorage.removeItem('tm_token');
+    localStorage.removeItem('tm_user');
+    showToast('info','Signed out',`See you soon, ${name}!`);
+    gotoAuth(); showLogin();
+  }
+
+  function authHeader() { return {'Authorization':`Bearer ${token}`}; }
+
+  // Load tasks
+  async function loadTasks() {
+    const list = document.getElementById('tasks-list');
+    list.innerHTML = [1,2,3].map(()=>`<div class="skel-item"></div>`).join('');
+    let url = `${API}/tasks?page=${currentPage}&page_size=${PAGE_SIZE}`;
+    if (currentFilter !== 'all') url += `&completed=${currentFilter}`;
+    try {
+      const res = await fetch(url, {headers: authHeader()});
+      if (res.status === 401) { logout(); return; }
+      renderTasks(await res.json());
+    } catch(e) {
+      list.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠</div><h4>Connection error</h4><p>Cannot reach the server. Check it's running.</p></div>`;
+    }
+  }
+
+  function renderTasks(data) {
+    const list = document.getElementById('tasks-list');
+    const tasks = data.tasks || [];
+    document.getElementById('task-count-badge').textContent = data.total ?? tasks.length;
+
+    if (!tasks.length) {
+      const msgs = {all:{h:'No tasks yet',p:'Add your first task above.'},false:{h:'All caught up!',p:'No pending tasks.'},true:{h:'Nothing completed yet',p:'Mark tasks as done to see them here.'}};
+      const m = msgs[currentFilter];
+      list.innerHTML = `<div class="empty-state"><div class="empty-icon">✓</div><h4>${m.h}</h4><p>${m.p}</p></div>`;
+    } else {
+      list.innerHTML = tasks.map(t=>`
+        <div class="task-item ${t.completed?'completed':''}" id="task-${t.id}">
+          <div class="task-check ${t.completed?'done':''}" onclick="${!t.completed?`markDone(${t.id})`:''}" title="${t.completed?'Completed':'Mark done'}"></div>
+          <div class="task-body">
+            <div class="task-title">${esc(t.title)}</div>
+            ${t.description?`<div class="task-desc">${esc(t.description)}</div>`:''}
+            <div class="task-meta">Created ${fmtDate(t.created_at)}</div>
+          </div>
+          <div class="task-right">
+            <span class="badge ${t.completed?'badge-done':'badge-pending'}">${t.completed?'Done':'Pending'}</span>
+            ${!t.completed?`<button class="btn-icon" onclick="markDone(${t.id})">✓ Done</button>`:''}
+            <button class="btn-icon danger" onclick="deleteTask(${t.id},'${esc(t.title)}')">✕</button>
+          </div>
+        </div>`).join('');
+    }
+
+    const total = data.total_pages || 1;
+    document.getElementById('page-info').textContent = `Page ${data.page||currentPage} of ${total}`;
+    document.getElementById('prev-btn').disabled = (data.page||currentPage) <= 1;
+    document.getElementById('next-btn').disabled = (data.page||currentPage) >= total;
+  }
+
+  // Create task
+  async function createTask() {
+    const titleEl = document.getElementById('task-title');
+    const descEl  = document.getElementById('task-desc');
+    const errEl   = document.getElementById('task-error');
+    const btn     = document.getElementById('add-task-btn');
+    const title   = titleEl.value.trim();
+    const desc    = descEl.value.trim();
+
+    errEl.textContent = ''; errEl.style.display = 'none';
+    if (!title) { errEl.textContent='Task title is required.'; errEl.classList.add('show'); titleEl.focus(); return; }
+    if (title.length > 100) { errEl.textContent='Title too long (max 100 characters).'; errEl.classList.add('show'); titleEl.focus(); return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>';
+
+    try {
+      const res = await fetch(`${API}/tasks`,{method:'POST',headers:{...authHeader(),'Content-Type':'application/json'},body:JSON.stringify({title,description:desc||null})});
+      if (res.status === 401) { logout(); return; }
+      if (!res.ok) { errEl.textContent='Failed to create task.'; errEl.classList.add('show'); return; }
+      // Clear inputs immediately
+      titleEl.value=''; descEl.value=''; currentPage=1;
+      // Show prominent success toast right away
+      showToast('success', 'Task added', `"${title}" has been added to your list.`);
+      // Reload list in background
+      loadTasks();
+    } catch(e) {
+      errEl.textContent='Server error. Try again.'; errEl.classList.add('show');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Add task';
+    }
+  }
+
+  // Mark done
+  async function markDone(id) {
+    const item = document.getElementById(`task-${id}`);
+    if (item) {
+      item.classList.add('completed');
+      const chk = item.querySelector('.task-check');
+      if (chk) { chk.classList.add('done'); chk.setAttribute('onclick',''); }
+    }
+    try {
+      const res = await fetch(`${API}/tasks/${id}`,{method:'PUT',headers:{...authHeader(),'Content-Type':'application/json'},body:JSON.stringify({completed:true})});
+      if (res.status === 401) { logout(); return; }
+      if (!res.ok) throw new Error();
+      showToast('success', 'Task completed', 'Marked as done successfully.');
+      loadTasks();
+    } catch(e) {
+      showToast('error','Update failed','Could not mark task as done.');
+      loadTasks();
+    }
+  }
+
+  // Delete task
+  async function deleteTask(id, title) {
+    if (!confirm(`Delete "${title}"?\nThis cannot be undone.`)) return;
+    try {
+      const res = await fetch(`${API}/tasks/${id}`,{method:'DELETE',headers:authHeader()});
+      if (res.status === 401) { logout(); return; }
+      if (!res.ok) throw new Error();
+      showToast('info', 'Task deleted', `"${title}" has been removed.`);
+      loadTasks();
+    } catch(e) {
+      showToast('error','Delete failed','Could not remove this task.');
+    }
+  }
+
+  // Filter & page
+  function setFilter(filter, btn) {
+    currentFilter = filter; currentPage = 1;
+    document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    loadTasks();
+  }
+
+  function changePage(dir) {
+    currentPage += dir;
+    loadTasks();
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  // Enter key
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const authActive = document.getElementById('auth-page').classList.contains('active');
+    if (authActive) {
+      document.getElementById('register-view').style.display !== 'none' ? doRegister() : doLogin();
+    } else if (document.activeElement === document.getElementById('task-title') ||
+               document.activeElement === document.getElementById('task-desc')) {
+      createTask();
+    }
+  });
+</script>
+</body>
+</html>
